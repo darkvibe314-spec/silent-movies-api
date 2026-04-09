@@ -1,178 +1,186 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 import requests
 import re
+import json
 
 app = FastAPI()
 
-# --- THE ENGINE ---
+# --- THE ENGINE CONFIG ---
 BASE = "https://cinverse.name.ng"
-HEADERS = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+HEADERS = {
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "referer": BASE
+}
 
 def validate(key: str):
     if key != "silent":
         raise HTTPException(status_code=401, detail="ACCESS DENIED BY SILENT TECH 🖕")
 
-# --- THE FRONTEND (Pro Dashboard + Multi-Lang Docs) ---
+# --- THE 3D PREMIUM UI ---
 HTML_UI = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SILENT API | PRO HUB</title>
+    <title>SILENT PRO API | 3D PLATFORM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
-        body { background: #050506; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; }
-        .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .card { background: #0f1115; border: 1px solid #1f2937; border-radius: 1.2rem; transition: all 0.3s ease; cursor: pointer; }
-        .card:hover { border-color: #3b82f6; background: #161a20; }
-        .input-field { background: #08090b; border: 1px solid #2d3748; border-radius: 12px; padding: 12px; color: #fff; width: 100%; outline: none; }
-        .response-box { background: #000; border: 1px solid #2d3748; border-radius: 15px; padding: 20px; font-family: monospace; font-size: 11px; color: #60a5fa; min-height: 250px; }
-        .tab-btn { padding: 8px 16px; border-radius: 8px; font-size: 11px; font-weight: bold; transition: 0.2s; }
-        .tab-active { background: #3b82f6; color: white; }
+        body { background: #020203; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; perspective: 1000px; }
+        .glass-3d { 
+            background: rgba(255, 255, 255, 0.03); 
+            backdrop-filter: blur(30px); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            transform: translateZ(20px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .card-3d:hover {
+            transform: translateY(-5px) rotateX(2deg) rotateY(-2deg);
+            border-color: #3b82f6;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+        }
+        .response-box { 
+            background: #000; border: 1px solid #2d3748; border-radius: 15px; 
+            padding: 20px; font-family: 'Courier New', monospace; font-size: 11px; 
+            color: #60a5fa; overflow: auto; max-height: 400px; 
+            scrollbar-width: thin; scrollbar-color: #3b82f6 #000;
+        }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+        .ios-dot { width: 11px; height: 11px; border-radius: 50%; }
+        .premium-btn { 
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .premium-btn:active { transform: scale(0.95) translateZ(0); }
     </style>
 </head>
-<body class="p-4 md:p-10">
+<body class="p-4 md:p-12 overflow-x-hidden">
     <div class="max-w-7xl mx-auto">
-        <!-- HEADER -->
-        <nav class="glass rounded-[30px] p-6 flex justify-between items-center mb-10">
-            <div class="flex items-center gap-4">
-                <h1 class="text-2xl font-black tracking-tighter">SILENT <span class="text-blue-500 italic">PRO</span></h1>
+        <!-- HEADER 3D -->
+        <nav class="glass-3d rounded-[40px] p-8 flex justify-between items-center mb-16">
+            <div class="flex items-center gap-6">
+                <div class="flex gap-2">
+                    <div class="ios-dot bg-[#ff5f57]"></div><div class="ios-dot bg-[#ffbd2e]"></div><div class="ios-dot bg-[#28c840]"></div>
+                </div>
+                <h1 class="text-3xl font-black tracking-tighter">SILENT <span class="text-blue-500 font-normal italic">PLATFORM</span></h1>
             </div>
-            <div class="flex gap-4">
-                <button onclick="toggleView('tester')" class="text-xs font-bold uppercase tracking-widest opacity-60 hover:opacity-100">Tester</button>
-                <button onclick="toggleView('docs')" class="text-xs font-bold uppercase tracking-widest opacity-60 hover:opacity-100">Documentation</button>
+            <div class="flex gap-6">
+                <button onclick="setView('tester')" class="text-xs font-bold uppercase tracking-widest opacity-60 hover:opacity-100 hover:text-blue-400">Tester</button>
+                <button onclick="setView('docs')" class="text-xs font-bold uppercase tracking-widest opacity-60 hover:opacity-100 hover:text-blue-400">Docs</button>
             </div>
         </nav>
 
         <!-- TESTER VIEW -->
-        <div id="tester-view" class="space-y-10">
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div onclick="setE('/api/search', 'Spider-Man')" class="card p-5">
+        <div id="tester-view" class="space-y-12">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                <div onclick="setE('/api/search', 'Spider-Man')" class="glass-3d card-3d rounded-3xl p-6 transition-all cursor-pointer">
                     <div class="text-xs font-bold text-blue-500 mb-1">01. Search</div>
-                    <div class="text-[10px] opacity-40">Keyword matching</div>
+                    <div class="text-[10px] opacity-40">Keywords & Slugs</div>
                 </div>
-                <div onclick="setE('/api/media', 'spider-man-homecoming-ylSxcJY0uNa')" class="card p-5">
-                    <div class="text-xs font-bold text-emerald-500 mb-1">02. Media</div>
-                    <div class="text-[10px] opacity-40">Streams & Downloads</div>
+                <div onclick="setE('/api/media', 'spider-man-homecoming-ylSxcJY0uNa')" class="glass-3d card-3d rounded-3xl p-6 transition-all cursor-pointer">
+                    <div class="text-xs font-bold text-emerald-500 mb-1">02. Media Links</div>
+                    <div class="text-[10px] opacity-40">Direct Downloads</div>
                 </div>
-                <div onclick="setE('/api/trending', 'N/A')" class="card p-5">
+                <div onclick="setE('/api/trending', 'N/A')" class="glass-3d card-3d rounded-3xl p-6 transition-all cursor-pointer">
                     <div class="text-xs font-bold text-orange-500 mb-1">03. Trending</div>
-                    <div class="text-[10px] opacity-40">Global releases</div>
+                    <div class="text-[10px] opacity-40">Current Releases</div>
                 </div>
-                <div onclick="setE('/api/homepage', 'N/A')" class="card p-5">
+                <div onclick="setE('/api/homepage', 'N/A')" class="glass-3d card-3d rounded-3xl p-6 transition-all cursor-pointer">
                     <div class="text-xs font-bold text-purple-500 mb-1">04. Homepage</div>
-                    <div class="text-[10px] opacity-40">Featured content</div>
-                </div>
-                <div onclick="setE('/api/categories', 'N/A')" class="card p-5">
-                    <div class="text-xs font-bold text-pink-500 mb-1">05. Categories</div>
-                    <div class="text-[10px] opacity-40">Genre lists</div>
-                </div>
-                <div onclick="setE('/api/genre', 'Action')" class="card p-5">
-                    <div class="text-xs font-bold text-yellow-500 mb-1">06. Genre Filter</div>
-                    <div class="text-[10px] opacity-40">Targeted results</div>
-                </div>
-                <div onclick="setE('/api/details', 'spider-man-homecoming-ylSxcJY0uNa')" class="card p-5">
-                    <div class="text-xs font-bold text-cyan-500 mb-1">07. Details</div>
-                    <div class="text-[10px] opacity-40">Item metadata</div>
-                </div>
-                <div onclick="setE('/api/status', 'N/A')" class="card p-5">
-                    <div class="text-xs font-bold text-red-500 mb-1">08. Status</div>
-                    <div class="text-[10px] opacity-40">Health check</div>
+                    <div class="text-[10px] opacity-40">Sitemap Data</div>
                 </div>
             </div>
 
-            <div class="glass rounded-[30px] p-8">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 id="current-endpoint" class="text-xl font-bold">Select an endpoint</h2>
-                    <span class="text-[10px] bg-blue-600 px-3 py-1 rounded-full font-bold uppercase">GET</span>
+            <div class="glass-3d rounded-[45px] p-10">
+                <div class="flex justify-between items-center mb-10">
+                    <h2 id="curr-endpoint" class="text-2xl font-black">/api/search</h2>
+                    <span class="text-[10px] bg-blue-600 px-4 py-1 rounded-full font-bold uppercase tracking-widest">GET REQUEST</span>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
                     <div>
-                        <label class="text-[10px] font-bold opacity-30 mb-2 block">API KEY</label>
-                        <input id="key-in" class="input-field" value="silent">
+                        <label class="text-[10px] font-black opacity-30 mb-4 block tracking-widest">API_KEY</label>
+                        <input id="k-in" class="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-blue-500 transition" value="silent">
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold opacity-30 mb-2 block uppercase">PARAMETER (ID/Slug/Query)</label>
-                        <input id="param-in" class="input-field" value="">
+                        <label class="text-[10px] font-black opacity-30 mb-4 block tracking-widest">PARAM_VALUE</label>
+                        <input id="p-in" class="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-blue-500 transition" value="">
                     </div>
                 </div>
-                <button onclick="run()" class="w-full bg-blue-600 py-4 rounded-xl font-bold active:scale-95 transition">EXECUTE REQUEST</button>
-                <pre id="out" class="response-box mt-6 overflow-auto">Waiting for execution...</pre>
+                <button onclick="run()" class="premium-btn w-full py-5 rounded-2xl font-black text-sm tracking-[5px] uppercase">Execute Command</button>
+                <div class="response-box mt-10">
+                    <div class="flex justify-between mb-4"><span class="text-[10px] font-bold text-blue-400">SILENT_SERVER_FEED</span><span id="stat" class="text-[10px]">IDLE</span></div>
+                    <pre id="out">SYSTEM STANDBY...</pre>
+                </div>
             </div>
         </div>
 
         <!-- DOCS VIEW -->
-        <div id="docs-view" class="hidden space-y-8">
-            <div class="glass rounded-[30px] p-8">
-                <h2 class="text-2xl font-black mb-6">API Documentation</h2>
-                <div class="flex gap-2 mb-8 overflow-x-auto pb-2">
-                    <button onclick="lang('py')" id="b-py" class="tab-btn tab-active">PYTHON</button>
-                    <button onclick="lang('js')" id="b-js" class="tab-btn bg-white/5">NODE.JS</button>
-                    <button onclick="lang('php')" id="b-php" class="tab-btn bg-white/5">PHP</button>
-                    <button onclick="lang('go')" id="b-go" class="tab-btn bg-white/5">GOLANG</button>
-                    <button onclick="lang('curl')" id="b-curl" class="tab-btn bg-white/5">CURL</button>
+        <div id="docs-view" class="hidden space-y-10">
+            <div class="glass-3d rounded-[45px] p-10">
+                <h2 class="text-3xl font-black mb-10 tracking-tighter">Documentation Portal</h2>
+                <div class="flex gap-3 mb-10 overflow-x-auto pb-4">
+                    <button onclick="setL('py')" id="t-py" class="text-[10px] font-black px-6 py-3 rounded-xl transition bg-blue-600">PYTHON</button>
+                    <button onclick="setL('js')" id="t-js" class="text-[10px] font-black px-6 py-3 rounded-xl transition bg-white/5">NODE.JS</button>
+                    <button onclick="setL('php')" id="t-php" class="text-[10px] font-black px-6 py-3 rounded-xl transition bg-white/5">PHP</button>
+                    <button onclick="setL('go')" id="t-go" class="text-[10px] font-black px-6 py-3 rounded-xl transition bg-white/5">GOLANG</button>
                 </div>
-                <pre id="code-box" class="response-box text-blue-200">Select a language...</pre>
+                <div class="response-box">
+                    <pre id="code-v"></pre>
+                </div>
             </div>
         </div>
 
-        <footer class="mt-20 text-center pb-20 opacity-20 text-[9px] tracking-[10px] font-black uppercase">
-            ALL RIGHTS RESERVED TO SILENT TECH | MADE WITH MIDDLE FINGER 🖕
+        <footer class="mt-32 text-center pb-20">
+            <div class="h-[1px] bg-white/5 mb-10"></div>
+            <p class="text-[10px] tracking-[15px] opacity-30 font-black uppercase">ALL RIGHTS RESERVED TO SILENT TECH | MADE WITH MIDDLE FINGER 🖕</p>
         </footer>
     </div>
 
     <script>
-        let curE = '';
-        function setE(path, def) {
-            curE = path;
-            document.getElementById('current-endpoint').innerText = path;
-            document.getElementById('param-in').value = def;
+        let cur = '/api/search';
+        function setE(e, d) { cur = e; document.getElementById('curr-endpoint').innerText = e; document.getElementById('p-in').value = d; }
+        function setView(v) { 
+            document.getElementById('tester-view').style.display = v === 'tester' ? 'block' : 'none'; 
+            document.getElementById('docs-view').style.display = v === 'docs' ? 'block' : 'none';
+            if(v==='docs') setL('py');
         }
 
         async function run() {
             const out = document.getElementById('out');
-            const key = document.getElementById('key-in').value;
-            const param = document.getElementById('param-in').value;
-            out.innerText = "Processing...";
-            let url = curE + '?key=' + key;
-            if(curE.includes('search')) url += '&q=' + param;
-            if(curE.includes('media') || curE.includes('details')) url += '&slug=' + param;
-            if(curE.includes('genre')) url = curE + '/' + param + '?key=' + key;
+            const k = document.getElementById('k-in').value;
+            const p = document.getElementById('p-in').value;
+            out.innerText = "Connecting to Silent Tech Node...";
+            let url = cur + '?key=' + k;
+            if(cur.includes('search')) url += '&q=' + p;
+            if(cur.includes('media') || cur.includes('details')) url += '&slug=' + p;
             
             try {
                 const res = await fetch(url);
                 const data = await res.json();
                 out.innerText = JSON.stringify(data, null, 2);
-            } catch(e) { out.innerText = "Error fetching data."; }
+            } catch(e) { out.innerText = "SERVER_TIMEOUT_ERROR"; }
         }
 
-        function toggleView(v) {
-            document.getElementById('tester-view').style.display = v === 'tester' ? 'block' : 'none';
-            document.getElementById('docs-view').style.display = v === 'docs' ? 'block' : 'none';
-            if(v === 'docs') lang('py');
-        }
-
-        const snippets = {
-            py: "import requests\\n\\nurl = 'YOUR_URL/api/search'\\nparams = {'q': 'Spider', 'key': 'silent'}\\nresponse = requests.get(url, params=params)\\nprint(response.json())",
-            js: "const axios = require('axios');\\n\\naxios.get('YOUR_URL/api/search', {\\n  params: { q: 'Spider', key: 'silent' }\\n}).then(res => console.log(res.data));",
-            php: "<?php\\n$q = 'Spider';\\n$key = 'silent';\\n$url = 'YOUR_URL/api/search?q='.$q.'&key='.$key;\\n$resp = file_get_contents($url);\\necho $resp;\\n?>",
-            go: "package main\\nimport (\\n  'fmt'\\n  'net/http'\\n  'io/ioutil'\\n)\\n\\nfunc main() {\\n  resp, _ := http.Get('YOUR_URL/api/search?q=Spider&key=silent')\\n  body, _ := ioutil.ReadAll(resp.Body)\\n  fmt.Println(string(body))\\n}",
-            curl: "curl -X GET 'YOUR_URL/api/search?q=Spider&key=silent'"
+        const snips = {
+            py: "import requests\\n\\nurl = 'https://YOUR_DOMAIN/api/search'\\nparams = {'q': 'Batman', 'key': 'silent'}\\nres = requests.get(url, params=params)\\nprint(res.json())",
+            js: "const fetch = require('node-fetch');\\n\\nasync function getMovies() {\\n  const res = await fetch('https://YOUR_DOMAIN/api/search?q=Batman&key=silent');\\n  const data = await res.json();\\n  console.log(data);\\n}",
+            php: "<?php\\n$url = 'https://YOUR_DOMAIN/api/search?q=Batman&key=silent';\\n$res = file_get_contents($url);\\necho $res;\\n?>",
+            go: "package main\\nimport (\\n  'fmt'\\n  'net/http'\\n  'io/ioutil'\\n)\\n\\nfunc main() {\\n  res, _ := http.Get('https://YOUR_DOMAIN/api/search?q=Batman&key=silent')\\n  body, _ := ioutil.ReadAll(res.Body)\\n  fmt.Println(string(body))\\n}"
         };
 
-        function lang(l) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
-            document.getElementById('b-'+l).classList.add('tab-active');
-            document.getElementById('code-box').innerText = snippets[l];
+        function setL(l) {
+            document.querySelectorAll('#docs-view button').forEach(b => b.classList.replace('bg-blue-600', 'bg-white/5'));
+            document.getElementById('t-'+l).classList.replace('bg-white/5', 'bg-blue-600');
+            document.getElementById('code-v').innerText = snips[l];
         }
     </script>
 </body>
 </html>
 """
 
-# --- BACKEND API (8 ENDPOINTS) ---
+# --- THE SCRAPER ENGINE (V2 FIXED) ---
 
 @app.get("/", response_class=HTMLResponse)
 def root(): return HTML_UI
@@ -187,11 +195,24 @@ def search(q: str, key: str = "silent"):
 @app.get("/api/media")
 def media(slug: str, key: str = "silent"):
     validate(key)
-    p = requests.get(f"{BASE}/movie/{slug}", headers=HEADERS)
-    num_id = re.search(r'"id":"(\d{15,20})"', p.text)
-    if not num_id: return {"error": "Media not found. Ensure full slug is used."}
-    src = requests.get(f"{BASE}/api/sources?id={num_id.group(1)}&detailPath={slug}", headers=HEADERS).json()
-    return {"provider": "SILENT TECH", "media": src}
+    # Step 1: Visit the movie page to scrape the secret numeric ID
+    movie_page = requests.get(f"{BASE}/movie/{slug}", headers=HEADERS)
+    
+    # Aggressive ID search (multiple patterns for Vercel stability)
+    num_id = re.search(r'"id":"(\d{15,20})"', movie_page.text)
+    if not num_id:
+        num_id = re.search(r'\"id\"\:\"(\d+)\"', movie_page.text)
+    
+    if not num_id:
+        return {"error": "Media metadata not found. Use full slug.", "tip": "Search first to get the correct slug."}
+
+    # Step 2: Call the real source API with the found ID
+    source_url = f"{BASE}/api/sources?id={num_id.group(1)}&detailPath={slug}"
+    # This header is MANDATORY for the download links to appear
+    src_headers = {**HEADERS, "referer": f"{BASE}/movie/{slug}", "accept": "*/*"}
+    
+    src_res = requests.get(source_url, headers=src_headers)
+    return {"provider": "SILENT TECH", "slug": slug, "media_data": src_res.json()}
 
 @app.get("/api/trending")
 def trending(key: str = "silent"):
@@ -203,25 +224,19 @@ def trending(key: str = "silent"):
 @app.get("/api/homepage")
 def homepage(key: str = "silent"):
     validate(key)
-    return {"provider": "SILENT TECH", "message": "Homepage data sync complete"}
+    return {"provider": "SILENT TECH", "status": "Ready", "data_origin": "Silent Node v1"}
 
 @app.get("/api/categories")
 def categories(key: str = "silent"):
     validate(key)
-    return {"provider": "SILENT TECH", "list": ["Action", "Horror", "Comedy", "Sci-Fi", "Crime"]}
-
-@app.get("/api/genre/{name}")
-def genre(name: str, key: str = "silent"):
-    validate(key)
-    return search(q=name, key=key)
+    return {"provider": "SILENT TECH", "list": ["Action", "Horror", "Comedy", "Sci-Fi", "Crime", "Animation"]}
 
 @app.get("/api/details")
 def details(slug: str, key: str = "silent"):
     validate(key)
-    parts = slug.split('-')
-    return {"provider": "SILENT TECH", "title": " ".join(parts[:-1]).title(), "id": parts[-1]}
+    return {"provider": "SILENT TECH", "item": slug, "details": "Syncing metadata..."}
 
 @app.get("/api/status")
 def status(key: str = "silent"):
     validate(key)
-    return {"provider": "SILENT TECH", "status": "Online", "engine": "FastAPI v2"}
+    return {"provider": "SILENT TECH", "system": "Premium", "latency": "Low"}
