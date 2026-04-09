@@ -1,8 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
 import requests
 import re
-import os
 
 app = FastAPI()
 
@@ -11,20 +9,7 @@ HEADERS = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 def validate(key: str):
     if key != "silent":
-        raise HTTPException(status_code=401, detail="UNAUTHORIZED ACCESS - SILENT TECH 🖕")
-
-# --- SERVE THE UI AT ROOT ---
-@app.get("/", response_class=HTMLResponse)
-def read_root():
-    # This reads your professional UI file and serves it at the main link
-    try:
-        with open("public/index.html", "r") as f:
-            return f.read()
-    except:
-        # Fallback if file isn't found during build
-        return "<h1>SILENT TECH UI LOADING...</h1><p>If you see this, check your folder structure.</p>"
-
-# --- API ENDPOINTS ---
+        raise HTTPException(status_code=401, detail="UNAUTHORIZED - SILENT TECH 🖕")
 
 @app.get("/api/v1/trending")
 def trending(key: str = "silent"):
