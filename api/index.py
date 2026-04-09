@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 import requests
 import re
@@ -9,8 +9,11 @@ app = FastAPI()
 
 # --- ENGINE CONFIG ---
 BASE = "https://cinverse.name.ng"
+# Use a global session to maintain state
+session = requests.Session()
 HEADERS = {
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "referer": BASE
 }
 
@@ -18,16 +21,14 @@ def validate(key: str):
     if key != "silent":
         raise HTTPException(status_code=401, detail="ACCESS DENIED BY SILENT TECH 🖕")
 
-# --- GHOST LINK LOGIC ---
+# --- GHOST PROXY SYSTEM ---
 def encode_ghost(url: str, request: Request):
-    """Hides the original provider behind a base64 string"""
     encoded = base64.b64encode(url.encode()).decode()
     base = str(request.base_url).rstrip('/')
     return f"{base}/api/v1/ghost?data={encoded}&key=silent"
 
 @app.get("/api/v1/ghost")
 def ghost_redirect(data: str, key: str):
-    """The Ghost Proxy: Decodes and redirects to the source secretly"""
     validate(key)
     try:
         real_url = base64.b64decode(data).decode()
@@ -35,13 +36,13 @@ def ghost_redirect(data: str, key: str):
     except:
         raise HTTPException(status_code=400, detail="INVALID_GHOST_STREAM")
 
-# --- PREMIUM 3D RESPONSIVE UI ---
+# --- THE PREMIUM 3D RESPONSIVE UI ---
 HTML_UI = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SILENT TECH | GHOST NODE</title>
+    <title>SILENT GHOST | PRO API</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -65,7 +66,7 @@ HTML_UI = """
     <div class="max-w-7xl mx-auto">
         <header class="glass-3d rounded-[50px] p-10 flex justify-between items-center mb-16">
             <h1 class="text-4xl font-black tracking-tighter uppercase italic">Silent <span class="text-blue-500 not-italic">Ghost</span></h1>
-            <div class="hidden md:block text-[10px] font-black opacity-30 tracking-[10px] uppercase">Node_v11_Ghost_Mode</div>
+            <div class="hidden md:block text-[10px] font-black opacity-30 tracking-[10px] uppercase">Proxy_Enabled_v11</div>
         </header>
 
         <!-- PLAYGROUND -->
@@ -93,19 +94,18 @@ HTML_UI = """
                 <h2 id="end-title" class="text-3xl font-black mb-12 uppercase italic tracking-tighter">/api/search</h2>
                 <div class="grid md:grid-cols-2 gap-10 mb-10">
                     <div><label class="text-[11px] font-black opacity-30 mb-4 block tracking-[3px]">SILENT_KEY</label>
-                    <input id="key-in" class="w-full bg-black/40 border border-white/10 rounded-2xl p-5 outline-none focus:border-blue-500 transition" value="silent"></div>
+                    <input id="key-in" class="w-full bg-black/40 border border-white/10 rounded-2xl p-5 outline-none focus:border-blue-500 transition text-sm" value="silent"></div>
                     <div><label class="text-[11px] font-black opacity-30 mb-4 block tracking-[3px]">PARAM_VALUE</label>
-                    <input id="param-in" class="w-full bg-black/40 border border-white/10 rounded-2xl p-5 outline-none focus:border-blue-500 transition"></div>
+                    <input id="param-in" class="w-full bg-black/40 border border-white/10 rounded-2xl p-5 outline-none focus:border-blue-500 transition text-sm"></div>
                 </div>
                 <button onclick="run()" class="w-full bg-blue-600 py-6 rounded-[30px] font-black text-sm tracking-[8px] uppercase active:scale-95 transition-all shadow-xl shadow-blue-500/20">Transmit Request</button>
                 <div class="response-area mt-12">
-                    <div class="flex justify-between mb-4"><span class="text-[10px] font-bold text-blue-500 uppercase">Live Output</span></div>
-                    <pre id="json-out">READY FOR COMMANDS...</pre>
+                    <div class="flex justify-between mb-4"><span class="text-[10px] font-bold text-blue-500 uppercase">Live Output Viewer</span></div>
+                    <pre id="json-out">SYSTEM_READY...</pre>
                 </div>
             </div>
         </div>
 
-        <!-- STACKED DOCS -->
         <h2 class="text-5xl font-black italic uppercase tracking-tighter mb-16">The Documentation</h2>
         <div class="doc-card">
             <p class="text-blue-500 font-black text-xs mb-4 uppercase tracking-widest italic">01. Python (Requests Node)</p>
@@ -134,7 +134,7 @@ HTML_UI = """
             const out = document.getElementById('json-out');
             const k = document.getElementById('key-in').value;
             const p = document.getElementById('param-in').value;
-            out.innerText = "Connecting to Silent Tech Cluster...";
+            out.innerText = "Connecting to Silent Ghost Cluster...";
             let url = ep + '?key=' + k;
             if(ep.includes('search')) url += '&q=' + p;
             if(ep.includes('media')) url += '&slug=' + p;
@@ -149,7 +149,7 @@ HTML_UI = """
 </html>
 """
 
-# --- BACKEND API LOGIC ---
+# --- BACKEND LOGIC ---
 
 @app.get("/", response_class=HTMLResponse)
 def index(): return HTML_UI
@@ -157,31 +157,52 @@ def index(): return HTML_UI
 @app.get("/api/search")
 def search(q: str, key: str = "silent"):
     validate(key)
-    res = requests.get(f"{BASE}/search?q={q}", headers=HEADERS)
+    res = session.get(f"{BASE}/search?q={q}", headers=HEADERS)
     slugs = re.findall(r'href="/movie/([^" \>]+)"', res.text)
     return {"provider": "SILENT TECH", "results": [{"title": s.replace('-', ' ').title(), "slug": s} for s in list(set(slugs))]}
 
 @app.get("/api/media")
 def media(slug: str, request: Request, key: str = "silent"):
     validate(key)
-    # 1. Scrape Movie Page for Numeric ID
-    page = requests.get(f"{BASE}/movie/{slug}", headers=HEADERS)
+    # SCRAPER V2: Nuclear Approach
+    # We fetch the page and extract the ID from the specific __NEXT_DATA__ JSON script tag
+    movie_page = session.get(f"{BASE}/movie/{slug}", headers=HEADERS)
     
-    # Aggressive ID Matcher
-    num_id = re.search(r'"id":"(\d{15,20})"', page.text)
-    if not num_id: num_id = re.search(r'\"id\"\:\"(\d+)\"', page.text)
-    if not num_id:
-        ids = re.findall(r'"(\d{18,20})"', page.text)
-        if ids: num_id = type('Match', (object,), {'group': lambda x: ids[0]})
+    # Extract the full Next.js data blob
+    next_data_match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', movie_page.text)
+    
+    numeric_id = None
+    if next_data_match:
+        try:
+            data_json = json.loads(next_data_match.group(1))
+            # Drill down to find the numeric ID in the props
+            # The ID usually lives in props -> pageProps -> initialData -> movie -> id
+            # Or we can search for it in the whole JSON blob
+            raw_json_str = next_data_match.group(1)
+            id_match = re.search(r'"id":"(\d{15,22})"', raw_json_str)
+            if id_match:
+                numeric_id = id_match.group(1)
+        except:
+            pass
 
-    if not num_id: return {"error": "Metadata error."}
+    # FALLBACK: If JSON method fails, use the original aggressive regex
+    if not numeric_id:
+        id_patterns = [r'"id":"(\d{15,20})"', r'id=(\d{15,20})', r'\"id\"\:\"(\d+)\"']
+        for pattern in id_patterns:
+            m = re.search(pattern, movie_page.text)
+            if m:
+                numeric_id = m.group(1)
+                break
 
-    # 2. Get Real Sources with Mandatory Referer
-    sources_url = f"{BASE}/api/sources?id={num_id.group(1)}&detailPath={slug}"
-    res = requests.get(sources_url, headers={**HEADERS, "referer": f"{BASE}/movie/{slug}"})
+    if not numeric_id:
+        return {"error": "Metadata error.", "tip": "Nuclear extraction failed. Site structure has changed."}
+
+    # Step 2: Get real sources with Referer
+    source_url = f"{BASE}/api/sources?id={numeric_id}&detailPath={slug}"
+    res = session.get(source_url, headers={**HEADERS, "referer": f"{BASE}/movie/{slug}"})
     raw_data = res.json()
 
-    # 3. Apply Ghost Masking to Results
+    # Step 3: Apply Ghost Masking
     if "results" in raw_data:
         for item in raw_data["results"]:
             if "stream_url" in item:
@@ -189,21 +210,21 @@ def media(slug: str, request: Request, key: str = "silent"):
             if "download_url" in item:
                 item["download_url"] = encode_ghost(item["download_url"], request)
 
-    return {"provider": "SILENT TECH", "slug": slug, "data": raw_data}
+    return {"provider": "SILENT TECH", "ghost_id": numeric_id, "data": raw_data}
 
 @app.get("/api/trending")
 def trending(key: str = "silent"):
     validate(key)
-    res = requests.get(BASE, headers=HEADERS)
+    res = session.get(BASE, headers=HEADERS)
     slugs = re.findall(r'href="/movie/([^" \>]+)"', res.text)
     return {"provider": "SILENT TECH", "results": [{"slug": s, "title": s.replace('-', ' ').title()} for s in slugs[:15]]}
 
 @app.get("/api/categories")
 def categories(key: str = "silent"):
     validate(key)
-    return {"provider": "SILENT TECH", "list": ["Action", "Horror", "Comedy", "Sci-Fi", "Crime", "Animation", "Drama", "Documentary"]}
+    return {"provider": "SILENT TECH", "list": ["Action", "Horror", "Comedy", "Sci-Fi", "Crime", "Animation"]}
 
 @app.get("/api/status")
 def status(key: str = "silent"):
     validate(key)
-    return {"provider": "SILENT TECH", "status": "Online", "engine": "Ghost v11 Stable"}
+    return {"provider": "SILENT TECH", "engine": "Ghost v11 Stable"}
