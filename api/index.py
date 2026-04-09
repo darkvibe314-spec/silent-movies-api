@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 import requests
 import re
 
-app = FastAPI(title="SILENT MOVIE API")
+app = FastAPI()
 
 BASE = "https://cinverse.name.ng"
 HEADERS = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -11,18 +11,12 @@ def validate(key: str):
     if key != "silent":
         raise HTTPException(status_code=401, detail="UNAUTHORIZED ACCESS - SILENT TECH 🖕")
 
-# --- CORE ENDPOINTS ---
-
-@app.get("/")
-def read_root():
-    return {"status": "online", "provider": "SILENT TECH", "message": "Welcome to Silent Movie API. Use /api/v1/docs for info."}
-
 @app.get("/api/v1/trending")
 def trending(key: str = "silent"):
     validate(key)
     res = requests.get(BASE, headers=HEADERS)
     slugs = re.findall(r'href="/movie/([^" \>]+)"', res.text)
-    return {"provider": "SILENT TECH", "category": "Trending", "results": [{"slug": s, "title": s.replace('-', ' ').title()} for s in slugs[:15]]}
+    return {"provider": "SILENT TECH", "results": [{"slug": s, "title": s.replace('-', ' ').title()} for s in slugs[:15]]}
 
 @app.get("/api/v1/search")
 def search(q: str, key: str = "silent"):
@@ -40,10 +34,18 @@ def movie(slug: str, key: str = "silent"):
     src = requests.get(f"{BASE}/api/sources?id={num_id.group(1)}&detailPath={slug}", headers=HEADERS).json()
     return {"provider": "SILENT TECH", "slug": slug, "id": num_id.group(1), "media": src}
 
+@app.get("/api/v1/genre/{name}")
+def get_genre(name: str, key: str = "silent"):
+    validate(key)
+    # This searches for the genre as a query to pull relevant movies
+    res = requests.get(f"{BASE}/search?q={name}", headers=HEADERS)
+    slugs = re.findall(r'href="/movie/([^" \>]+)"', res.text)
+    return {"provider": "SILENT TECH", "genre": name, "results": [{"slug": s, "title": s.replace('-', ' ').title()} for s in slugs[:10]]}
+
 @app.get("/api/v1/categories")
 def cats(key: str = "silent"):
     validate(key)
     return {
         "provider": "SILENT TECH",
-        "categories": ["Trending", "Search", "Streaming", "Download", "Action", "Adventure", "Animation", "Horror", "Comedy", "Sci-Fi"]
+        "list": ["Trending", "Action", "Adventure", "Animation", "Comedy", "Crime", "Horror", "Sci-Fi", "Drama"]
     }
