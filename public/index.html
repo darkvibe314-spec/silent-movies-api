@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SILENT Movie API | Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #050505; color: white; font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
+    </style>
+</head>
+<body class="p-6">
+    <div class="max-w-6xl mx-auto">
+        <!-- HEADER -->
+        <header class="glass rounded-3xl p-6 flex justify-between items-center mb-10">
+            <div class="flex items-center gap-4">
+                <div class="flex gap-1.5">
+                    <div class="dot bg-red-500"></div><div class="dot bg-yellow-500"></div><div class="dot bg-green-500"></div>
+                </div>
+                <h1 class="text-xl font-black tracking-widest">SILENT <span class="text-blue-500">API</span></h1>
+            </div>
+            <div class="text-[10px] opacity-40 uppercase tracking-[4px]">Verified by Silent Tech</div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- SIDEBAR: DOCS -->
+            <aside class="lg:col-span-1 space-y-6">
+                <div class="glass p-6 rounded-3xl">
+                    <h2 class="text-blue-400 font-bold mb-4">API DOCUMENTATION</h2>
+                    <div class="space-y-4 text-sm opacity-70">
+                        <p><strong>Base URL:</strong> <code>/api/v1/</code></p>
+                        <p><strong>Auth:</strong> <code>?key=silent</code></p>
+                        <div class="bg-black/40 p-3 rounded-xl font-mono text-xs">
+                            # Python Example<br>requests.get(url + "search?q=Spider&key=silent")
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- MAIN: TESTER GRID -->
+            <main class="lg:col-span-2 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- TEST CARD -->
+                    <div class="glass p-6 rounded-3xl">
+                        <h3 class="font-bold mb-2">Search Movie</h3>
+                        <p class="text-xs opacity-50 mb-4">Endpoint: /search?q=...</p>
+                        <button onclick="test('/api/v1/search?q=Spider&key=silent')" class="w-full py-2 bg-blue-600 rounded-xl text-sm font-bold">TEST ENDPOINT</button>
+                    </div>
+                    <div class="glass p-6 rounded-3xl">
+                        <h3 class="font-bold mb-2">Movie Sources</h3>
+                        <p class="text-xs opacity-50 mb-4">Endpoint: /movie?slug=...</p>
+                        <button onclick="test('/api/v1/movie?slug=spider-man-homecoming-ylSxcJY0uNa&key=silent')" class="w-full py-2 bg-blue-600 rounded-xl text-sm font-bold">TEST ENDPOINT</button>
+                    </div>
+                </div>
+
+                <!-- RESPONSE VIEWER -->
+                <div class="glass p-6 rounded-3xl min-h-[300px]">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-xs font-mono text-green-400">// LIVE_RESPONSE_VIEWER</span>
+                        <span class="text-[10px] opacity-30">SILENT TECH v1.0</span>
+                    </div>
+                    <pre id="json" class="text-xs font-mono text-blue-200 overflow-auto max-h-[400px]">Waiting for test...</pre>
+                </div>
+            </main>
+        </div>
+
+        <footer class="mt-20 text-center opacity-20 text-[10px] tracking-[10px] uppercase pb-10">
+            ALL RIGHTS RESERVED TO SILENT TECH | MADE WITH MIDDLE FINGER 🖕
+        </footer>
+    </div>
+
+    <script>
+        async function test(url) {
+            document.getElementById('json').innerText = "Fetching data...";
+            const res = await fetch(url);
+            const data = await res.json();
+            document.getElementById('json').innerText = JSON.stringify(data, null, 2);
+        }
+    </script>
+</body>
+</html>
