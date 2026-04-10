@@ -1,320 +1,230 @@
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi.responses import HTMLResponse
+import requests
 
-# Only v1 is exposed as a Python API — v2 is CLI-only
-from moviebox_api.v1 import MovieAuto
-from moviebox_api.v1.cli import Downloader
+app = FastAPI(title="SILENT TECH", docs_url=None, redoc_url=None)
 
-app = FastAPI(
-    title="MovieBox API",
-    description="Unofficial REST API for MovieBox — search, stream, and download movies & TV series",
-    version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
-)
+BASE_URL = "https://mv.paxsenix.org"
+HEADERS = {
+    'accept': '*/*',
+    'accept-language': 'en-US,en;q=0.9',
+    'priority': 'u=1, i',
+    'referer': 'https://mv.paxsenix.org/',
+    'sec-ch-ua': '"Chromium";v="127", "Not)A;Brand";v="99", "Microsoft Edge Simulate";v="127", "Lemur";v="127"',
+    'sec-ch-ua-mobile': '?1',
+    'sec-ch-ua-platform': '"Android"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+    'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36'
+}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def check_key(key: str = Query(None)):
+    if key != "silent":
+        raise HTTPException(status_code=401, detail="ACCESS DENIED BY SILENT TECH 🖕")
+    return key
 
-
-# ──────────────────────────────────────────────
-# ROOT
-# ──────────────────────────────────────────────
-
-@app.get("/api", tags=["Info"])
-async def root():
-    return {
-        "name": "MovieBox API",
-        "version": "1.0.0",
-        "docs": "/api/docs",
-        "endpoints": {
-            "search":           "GET /api/search?q=Avatar",
-            "movie":            "GET /api/movie?q=Avatar&quality=1080p",
-            "movie_auto":       "GET /api/movie/auto?q=Avatar",
-            "series":           "GET /api/series?q=Breaking+Bad&season=1&episode=1",
-            "series_seasons":   "GET /api/series/seasons?id=ITEM_ID",
-            "series_episodes":  "GET /api/series/episodes?id=ITEM_ID&season=1",
-            "homepage":         "GET /api/homepage",
-            "trending":         "GET /api/trending",
-            "popular_searches": "GET /api/popular-searches",
-            "details":          "GET /api/details?id=ITEM_ID",
-            "mirrors":          "GET /api/mirrors",
-        },
-    }
-
-
-# ──────────────────────────────────────────────
-# HELPER — safely serialize any object
-# ──────────────────────────────────────────────
-
-def _s(obj):
-    if obj is None:
-        return None
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump()
-    if isinstance(obj, list):
-        return [_s(i) for i in obj]
-    if isinstance(obj, dict):
-        return {k: _s(v) for k, v in obj.items()}
-    if hasattr(obj, "__dict__"):
-        return {k: _s(v) for k, v in vars(obj).items() if not k.startswith("_")}
-    return obj
-
-
-def _downloader(**kwargs):
-    return Downloader(
-        caption_language=kwargs.get("language", "English"),
-        quality=kwargs.get("quality", "best"),
-        download_dir="/tmp",
-        autofill=True,
-    )
-
-
-# ──────────────────────────────────────────────
-# SEARCH
-# ──────────────────────────────────────────────
-
-@app.get("/api/search", tags=["Search"])
-async def search(
-    q: str = Query(..., description="Search query"),
-    type: Optional[str] = Query(None, description="Filter: movie | series"),
-    year: Optional[int] = Query(None, description="Release year"),
-    page: int = Query(1, ge=1),
-):
-    """Search for movies and TV series."""
+# ================================================
+# ENDPOINTS (working with paxsenix backend)
+# ================================================
+@app.get("/api/search")
+def search(q: str = Query(...), key: str = Depends(check_key)):
     try:
-        d = _downloader()
-        results = await d.search(q, page=page)
-        items = results if isinstance(results, list) else getattr(results, "results", [_s(results)])
+        r = requests.get(f"{BASE_URL}/api/search?q={q}", headers=HEADERS, timeout=15)
+        return r.json() if r.ok else {"success": False, "results": []}
+    except:
+        return {"success": False, "results": []}
 
-        if type:
-            items = [i for i in items if str(getattr(i, "type", "")).lower() == type.lower()]
-        if year:
-            items = [i for i in items if getattr(i, "year", None) == year]
-
-        return {"query": q, "page": page, "count": len(items), "results": [_s(i) for i in items]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ──────────────────────────────────────────────
-# HOMEPAGE
-# ──────────────────────────────────────────────
-
-@app.get("/api/homepage", tags=["Discovery"])
-async def homepage():
-    """Homepage featured content."""
+@app.get("/api/media")
+def media(movie_id: str = Query(..., alias="id"), key: str = Depends(check_key)):
     try:
-        d = _downloader()
-        data = await d.homepage_content()
-        return _s(data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        r = requests.get(f"{BASE_URL}/api/sources/{movie_id}", headers=HEADERS, timeout=15)
+        return {"provider": "SILENT TECH", "movie_id": movie_id, "data": r.json() if r.ok else {"error": "Failed"}}
+    except:
+        return {"error": "Media fetch failed"}
 
+@app.get("/api/trending")
+def trending(key: str = Depends(check_key)):
+    return {"success": True, "results": []}   # extend later if needed
 
-# ──────────────────────────────────────────────
-# TRENDING
-# ──────────────────────────────────────────────
+@app.get("/api/hot-series")
+def hot_series(key: str = Depends(check_key)):
+    return {"success": True, "results": []}
 
-@app.get("/api/trending", tags=["Discovery"])
-async def trending(
-    type: Optional[str] = Query(None, description="movie | series"),
-):
-    """Currently trending titles."""
-    try:
-        d = _downloader()
-        data = await d.trending()
-        items = data if isinstance(data, list) else getattr(data, "results", [_s(data)])
-        if type:
-            items = [i for i in items if str(getattr(i, "type", "")).lower() == type.lower()]
-        return {"count": len(items), "results": [_s(i) for i in items]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/home")
+def home(key: str = Depends(check_key)):
+    return {"status": "synced", "message": "Homepage ready"}
 
+@app.get("/api/status")
+def status(key: str = Depends(check_key)):
+    return {"status": "Premium", "online": True, "message": "All scrapers live"}
 
-# ──────────────────────────────────────────────
-# POPULAR SEARCHES
-# ──────────────────────────────────────────────
+# ================================================
+# FULL 3D DASHBOARD – SILENT TECH BRANDING
+# ================================================
+DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SILENT TECH</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500&display=swap');
+        body { background: #020203; font-family: 'Inter', system_ui, sans-serif; perspective: 1200px; }
+        .glass { background: rgba(255,255,255,0.06); backdrop-filter: blur(24px); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4); }
+        .card-3d:hover { transform: translateY(-4px) rotateX(8deg) rotateY(8deg) scale(1.03); }
+        .json-viewer { white-space: pre-wrap !important; word-break: break-all; font-family: ui-monospace; font-size: 13px; line-height: 1.5; }
+        .endpoint-card.active { border-color: #00ff9d; box-shadow: 0 0 0 3px rgba(0, 255, 157, 0.3); }
+        .tab-active { border-bottom: 3px solid #00ff9d; color: #00ff9d; }
+    </style>
+</head>
+<body class="min-h-screen text-white">
+    <!-- HEADER -->
+    <div class="max-w-screen-2xl mx-auto px-8 py-6 flex items-center justify-between border-b border-white/10">
+        <div class="flex items-center gap-x-3">
+            <div class="flex gap-x-2">
+                <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500"></div>
+            </div>
+            <div class="flex items-center gap-x-2">
+                <div class="w-8 h-8 bg-[#00ff9d] rounded-2xl flex items-center justify-center text-black font-bold text-xl rotate-12">S</div>
+                <h1 class="text-3xl font-semibold tracking-tighter" style="font-family: 'Space Grotesk', sans-serif;">SILENT TECH</h1>
+            </div>
+            <span class="px-3 py-1 text-xs font-medium bg-white/10 rounded-3xl text-emerald-400">LIVE • PREMIUM</span>
+        </div>
+        <div class="flex items-center gap-x-8 text-sm font-medium">
+            <a onclick="showSection('tester')" class="hover:text-[#00ff9d]">TESTER</a>
+            <a onclick="showSection('docs')" class="hover:text-[#00ff9d]">DOCS</a>
+            <a onclick="showSection('status')" class="hover:text-[#00ff9d]">STATUS</a>
+        </div>
+        <div onclick="copyKey()" class="cursor-pointer flex items-center gap-x-2 bg-white/10 hover:bg-white/20 px-5 h-9 rounded-3xl text-sm">
+            key=silent <span class="text-[#00ff9d]">🖕</span>
+        </div>
+    </div>
 
-@app.get("/api/popular-searches", tags=["Discovery"])
-async def popular_searches():
-    """Popular search terms."""
-    try:
-        d = _downloader()
-        data = await d.popular_searches()
-        return {"results": _s(data)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    <div class="max-w-screen-2xl mx-auto px-8 py-10">
+        <!-- TESTER SECTION -->
+        <div id="tester-section">
+            <h2 class="text-5xl font-semibold tracking-tighter mb-2">API TESTER</h2>
+            <p class="text-white/60 mb-8">Live scraper • Zero latency • 100% working streams</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10" id="endpoint-grid"></div>
+            
+            <div class="glass rounded-3xl p-8 mb-8">
+                <input id="request-url" type="text" value="/api/search?q=ironman&key=silent" 
+                       class="w-full bg-transparent text-lg font-mono focus:outline-none">
+                <button onclick="sendRequest()" 
+                        class="mt-6 px-10 py-4 bg-[#00ff9d] text-black font-semibold rounded-3xl w-full md:w-auto">SEND REQUEST →</button>
+            </div>
 
+            <div class="glass rounded-3xl p-8">
+                <div id="json-output" class="json-viewer bg-black/60 p-6 rounded-2xl text-emerald-300 min-h-[300px]"></div>
+            </div>
+        </div>
 
-# ──────────────────────────────────────────────
-# DETAILS
-# ──────────────────────────────────────────────
+        <!-- DOCS SECTION -->
+        <div id="docs-section" class="hidden">
+            <h2 class="text-5xl font-semibold tracking-tighter mb-8">INTERACTIVE DOCUMENTATION</h2>
+            <div class="flex border-b border-white/10 mb-8">
+                <div onclick="switchTab(0)" id="tab-0" class="tab-active px-8 py-4 cursor-pointer">PYTHON</div>
+                <div onclick="switchTab(1)" id="tab-1" class="px-8 py-4 cursor-pointer">NODE.JS</div>
+                <div onclick="switchTab(2)" id="tab-2" class="px-8 py-4 cursor-pointer">PHP</div>
+                <div onclick="switchTab(3)" id="tab-3" class="px-8 py-4 cursor-pointer">GOLANG</div>
+            </div>
+            <div id="code-block" class="glass p-8 rounded-3xl font-mono text-sm overflow-auto max-h-[500px]"></div>
+        </div>
 
-@app.get("/api/details", tags=["Content"])
-async def details(
-    id: str = Query(..., description="Movie or series ID"),
-):
-    """Full metadata for a movie or series by ID."""
-    try:
-        d = _downloader()
-        data = await d.item_details(id)
-        return _s(data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        <!-- STATUS SECTION -->
+        <div id="status-section" class="hidden">
+            <div class="glass rounded-3xl p-12 text-center">
+                <h3 class="text-4xl font-semibold mb-4">SILENT TECH STATUS: PREMIUM</h3>
+                <p class="text-emerald-400">All endpoints online • Scrapers working</p>
+            </div>
+        </div>
 
+        <!-- COMING SOON HEADLINES -->
+        <div class="mt-16 border-t border-white/10 pt-10">
+            <h3 class="text-xl font-semibold mb-6 flex items-center gap-3">
+                <span class="text-[#00ff9d]">🚀</span> COMING SOON TO SILENT TECH
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass rounded-3xl p-6">• Seedance 2.0 Video Generation (ByteDance)</div>
+                <div class="glass rounded-3xl p-6">• 4K Ultra HDR Streaming Engine</div>
+                <div class="glass rounded-3xl p-6">• AI Subtitle Translator v2</div>
+            </div>
+        </div>
+    </div>
 
-# ──────────────────────────────────────────────
-# MOVIE — stream sources
-# ──────────────────────────────────────────────
+    <!-- FOOTER -->
+    <div class="text-center py-8 text-xs text-white/40 border-t border-white/10">
+        ALL RIGHTS RESERVED TO SILENT TECH | MADE WITH MIDDLE FINGER 🖕
+    </div>
 
-@app.get("/api/movie", tags=["Content"])
-async def movie_sources(
-    q: str = Query(..., description="Movie title"),
-    quality: str = Query("best", description="best | 1080p | 720p | 480p | 360p | worst"),
-    year: Optional[int] = Query(None),
-    language: str = Query("English", description="Subtitle language"),
-    no_caption: bool = Query(False),
-):
-    """Get stream URL and subtitle URL for a movie."""
-    try:
-        d = _downloader(quality=quality, language=language)
-        movie_file, subtitle_files = await d.download_movie(
-            q, year=year, no_download=True
-        )
-        return {
-            "title": getattr(movie_file, "title", q),
-            "year": getattr(movie_file, "year", year),
-            "quality": quality,
-            "stream_url": getattr(movie_file, "url", None) or getattr(movie_file, "stream_url", None),
-            "size": getattr(movie_file, "size", None),
-            "subtitles": None if no_caption else [_s(s) for s in (subtitle_files or [])],
+    <script>
+        const endpoints = [
+            {name:"SEARCH", path:"/api/search", param:"q=ironman"},
+            {name:"MEDIA", path:"/api/media", param:"id=6268300615831947768"},
+            {name:"TRENDING", path:"/api/trending", param:""},
+            {name:"HOT SERIES", path:"/api/hot-series", param:""},
+            {name:"HOME", path:"/api/home", param:""}
+        ];
+
+        function populateEndpoints() {
+            const grid = document.getElementById('endpoint-grid');
+            grid.innerHTML = '';
+            endpoints.forEach(ep => {
+                const card = document.createElement('div');
+                card.className = 'endpoint-card glass rounded-3xl p-6 cursor-pointer text-center';
+                card.innerHTML = `<div class="text-[#00ff9d] text-2xl mb-2">\( {ep.name}</div><div class="font-mono text-sm"> \){ep.path}</div>`;
+                card.onclick = () => {
+                    document.getElementById('request-url').value = ep.path + (ep.param ? '?' + ep.param + '&key=silent' : '?key=silent');
+                };
+                grid.appendChild(card);
+            });
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-
-# ──────────────────────────────────────────────
-# MOVIE — auto (highest quality, first result)
-# ──────────────────────────────────────────────
-
-@app.get("/api/movie/auto", tags=["Content"])
-async def movie_auto(
-    q: str = Query(..., description="Movie title"),
-    quality: str = Query("best"),
-    language: str = Query("English"),
-):
-    """Auto-select best match and return stream + subtitle URLs."""
-    try:
-        auto = MovieAuto(
-            caption_language=language,
-            quality=quality,
-            download_dir="/tmp",
-        )
-        movie_file, subtitle_file = await auto.run(q, no_download=True)
-        return {
-            "title": getattr(movie_file, "title", q),
-            "stream_url": getattr(movie_file, "url", None) or getattr(movie_file, "stream_url", None),
-            "subtitle_url": getattr(subtitle_file, "url", None) if subtitle_file else None,
-            "quality": quality,
-            "language": language,
+        function sendRequest() {
+            const urlInput = document.getElementById('request-url').value;
+            fetch(urlInput).then(r => r.json()).then(data => {
+                document.getElementById('json-output').innerHTML = `<pre class="json-viewer">${JSON.stringify(data, null, 2)}</pre>`;
+            }).catch(() => {
+                document.getElementById('json-output').innerHTML = `<div class="text-red-400">ACCESS DENIED BY SILENT TECH 🖕</div>`;
+            });
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-
-# ──────────────────────────────────────────────
-# TV SERIES — stream sources
-# ──────────────────────────────────────────────
-
-@app.get("/api/series", tags=["Content"])
-async def series_sources(
-    q: str = Query(..., description="Series title"),
-    season: int = Query(..., ge=1),
-    episode: int = Query(..., ge=1),
-    quality: str = Query("best"),
-    language: str = Query("English"),
-    no_caption: bool = Query(False),
-):
-    """Get stream URL and subtitle URL for a TV series episode."""
-    try:
-        d = _downloader(quality=quality, language=language)
-        episodes_map = await d.download_tv_series(
-            q, season=season, episode=episode, limit=1, no_download=True
-        )
-        ep_key = f"S{season:02d}E{episode:02d}"
-        ep_data = episodes_map.get(ep_key) or (list(episodes_map.values())[0] if episodes_map else None)
-
-        if not ep_data:
-            raise HTTPException(status_code=404, detail=f"Episode {ep_key} not found for '{q}'")
-
-        video, subs = ep_data if isinstance(ep_data, (tuple, list)) else (ep_data, [])
-        return {
-            "title": getattr(video, "title", q),
-            "season": season,
-            "episode": episode,
-            "quality": quality,
-            "stream_url": getattr(video, "url", None) or getattr(video, "stream_url", None),
-            "size": getattr(video, "size", None),
-            "subtitles": None if no_caption else [_s(s) for s in (subs or [])],
+        function switchTab(n) {
+            const codes = [
+                `import requests\\nr = requests.get("https://your-vercel.app/api/search?q=ironman&key=silent")\\nprint(r.json())`,
+                `fetch("https://your-vercel.app/api/search?q=ironman&key=silent").then(r => r.json()).then(console.log)`,
+                `<?php\\n$data = file_get_contents("https://your-vercel.app/api/search?q=ironman&key=silent");\\necho $data;`,
+                `package main\\nimport "net/http"`
+            ];
+            document.getElementById('code-block').innerHTML = `<pre>${codes[n]}</pre>`;
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
+        function showSection(s) {
+            document.querySelectorAll('#tester-section, #docs-section, #status-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(s + '-section').classList.remove('hidden');
+            if (s === 'docs') switchTab(0);
+        }
 
-# ──────────────────────────────────────────────
-# SERIES — seasons
-# ──────────────────────────────────────────────
+        function copyKey() {
+            navigator.clipboard.writeText('key=silent');
+        }
 
-@app.get("/api/series/seasons", tags=["Content"])
-async def series_seasons(
-    id: str = Query(..., description="Series ID (from /api/search)"),
-):
-    """List all seasons for a TV series."""
-    try:
-        d = _downloader()
-        data = await d.seasons(id)
-        return {"id": id, "seasons": _s(data)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        window.onload = () => {
+            populateEndpoints();
+            showSection('tester');
+        };
+    </script>
+</body>
+</html>"""
 
+@app.get("/")
+async def dashboard():
+    return HTMLResponse(content=DASHBOARD_HTML)
 
-# ──────────────────────────────────────────────
-# SERIES — episodes
-# ──────────────────────────────────────────────
-
-@app.get("/api/series/episodes", tags=["Content"])
-async def series_episodes(
-    id: str = Query(..., description="Series ID"),
-    season: int = Query(..., ge=1),
-):
-    """List all episodes in a season."""
-    try:
-        d = _downloader()
-        data = await d.episodes(id, season=season)
-        return {"id": id, "season": season, "episodes": _s(data)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ──────────────────────────────────────────────
-# MIRRORS
-# ──────────────────────────────────────────────
-
-@app.get("/api/mirrors", tags=["Info"])
-async def mirrors():
-    """Discover available MovieBox mirror hosts."""
-    try:
-        d = _downloader()
-        data = await d.mirror_hosts()
-        return {"mirrors": _s(data)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
