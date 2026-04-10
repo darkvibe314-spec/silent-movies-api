@@ -1,15 +1,14 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from typing import Optional
-import asyncio
 
-from moviebox_api.v2 import MovieBoxV2
+# Only v1 is exposed as a Python API — v2 is CLI-only
 from moviebox_api.v1 import MovieAuto
+from moviebox_api.v1.cli import Downloader
 
 app = FastAPI(
     title="MovieBox API",
-    description="Unofficial REST API for MovieBox - search, stream, and download movies & TV series",
+    description="Unofficial REST API for MovieBox — search, stream, and download movies & TV series",
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -19,14 +18,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def get_client():
-    return MovieBoxV2()
 
 
 # ──────────────────────────────────────────────
@@ -40,16 +34,46 @@ async def root():
         "version": "1.0.0",
         "docs": "/api/docs",
         "endpoints": {
-            "search":    "GET /api/search",
-            "movie":     "GET /api/movie",
-            "series":    "GET /api/series",
-            "homepage":  "GET /api/homepage",
-            "trending":  "GET /api/trending",
-            "details":   "GET /api/details",
-            "mirrors":   "GET /api/mirrors",
+            "search":           "GET /api/search?q=Avatar",
+            "movie":            "GET /api/movie?q=Avatar&quality=1080p",
+            "movie_auto":       "GET /api/movie/auto?q=Avatar",
+            "series":           "GET /api/series?q=Breaking+Bad&season=1&episode=1",
+            "series_seasons":   "GET /api/series/seasons?id=ITEM_ID",
+            "series_episodes":  "GET /api/series/episodes?id=ITEM_ID&season=1",
+            "homepage":         "GET /api/homepage",
+            "trending":         "GET /api/trending",
             "popular_searches": "GET /api/popular-searches",
+            "details":          "GET /api/details?id=ITEM_ID",
+            "mirrors":          "GET /api/mirrors",
         },
     }
+
+
+# ──────────────────────────────────────────────
+# HELPER — safely serialize any object
+# ──────────────────────────────────────────────
+
+def _s(obj):
+    if obj is None:
+        return None
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, list):
+        return [_s(i) for i in obj]
+    if isinstance(obj, dict):
+        return {k: _s(v) for k, v in obj.items()}
+    if hasattr(obj, "__dict__"):
+        return {k: _s(v) for k, v in vars(obj).items() if not k.startswith("_")}
+    return obj
+
+
+def _downloader(**kwargs):
+    return Downloader(
+        caption_language=kwargs.get("language", "English"),
+        quality=kwargs.get("quality", "best"),
+        download_dir="/tmp",
+        autofill=True,
+    )
 
 
 # ──────────────────────────────────────────────
@@ -59,28 +83,22 @@ async def root():
 @app.get("/api/search", tags=["Search"])
 async def search(
     q: str = Query(..., description="Search query"),
-    type: Optional[str] = Query(None, description="Filter by type: movie | series"),
-    year: Optional[int] = Query(None, description="Filter by release year"),
-    page: int = Query(1, ge=1, description="Page number"),
+    type: Optional[str] = Query(None, description="Filter: movie | series"),
+    year: Optional[int] = Query(None, description="Release year"),
+    page: int = Query(1, ge=1),
 ):
-    """Search for movies and TV series by title."""
+    """Search for movies and TV series."""
     try:
-        client = get_client()
-        results = await client.search(q, page=page)
-
-        items = results if isinstance(results, list) else getattr(results, "results", results)
+        d = _downloader()
+        results = await d.search(q, page=page)
+        items = results if isinstance(results, list) else getattr(results, "results", [_s(results)])
 
         if type:
-            items = [i for i in items if getattr(i, "type", "").lower() == type.lower()]
+            items = [i for i in items if str(getattr(i, "type", "")).lower() == type.lower()]
         if year:
             items = [i for i in items if getattr(i, "year", None) == year]
 
-        return {
-            "query": q,
-            "page": page,
-            "count": len(items),
-            "results": [_serialize(i) for i in items],
-        }
+        return {"query": q, "page": page, "count": len(items), "results": [_s(i) for i in items]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -91,11 +109,11 @@ async def search(
 
 @app.get("/api/homepage", tags=["Discovery"])
 async def homepage():
-    """Get homepage content — featured, new releases, banners, etc."""
+    """Homepage featured content."""
     try:
-        client = get_client()
-        data = await client.homepage()
-        return _serialize(data)
+        d = _downloader()
+        data = await d.homepage_content()
+        return _s(data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -106,21 +124,16 @@ async def homepage():
 
 @app.get("/api/trending", tags=["Discovery"])
 async def trending(
-    type: Optional[str] = Query(None, description="Filter by type: movie | series"),
+    type: Optional[str] = Query(None, description="movie | series"),
 ):
-    """Get currently trending movies and TV series."""
+    """Currently trending titles."""
     try:
-        client = get_client()
-        data = await client.trending()
-        items = data if isinstance(data, list) else getattr(data, "results", [data])
-
+        d = _downloader()
+        data = await d.trending()
+        items = data if isinstance(data, list) else getattr(data, "results", [_s(data)])
         if type:
-            items = [i for i in items if getattr(i, "type", "").lower() == type.lower()]
-
-        return {
-            "count": len(items),
-            "results": [_serialize(i) for i in items],
-        }
+            items = [i for i in items if str(getattr(i, "type", "")).lower() == type.lower()]
+        return {"count": len(items), "results": [_s(i) for i in items]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -131,139 +144,126 @@ async def trending(
 
 @app.get("/api/popular-searches", tags=["Discovery"])
 async def popular_searches():
-    """Get current popular search terms."""
+    """Popular search terms."""
     try:
-        client = get_client()
-        data = await client.popular_searches()
-        return {"results": _serialize(data)}
+        d = _downloader()
+        data = await d.popular_searches()
+        return {"results": _s(data)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ──────────────────────────────────────────────
-# ITEM DETAILS
+# DETAILS
 # ──────────────────────────────────────────────
 
 @app.get("/api/details", tags=["Content"])
 async def details(
     id: str = Query(..., description="Movie or series ID"),
 ):
-    """Get full details for a specific movie or TV series by its ID."""
+    """Full metadata for a movie or series by ID."""
     try:
-        client = get_client()
-        data = await client.details(id)
-        return _serialize(data)
+        d = _downloader()
+        data = await d.item_details(id)
+        return _s(data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ──────────────────────────────────────────────
-# MOVIE — SOURCES & STREAM URL
+# MOVIE — stream sources
 # ──────────────────────────────────────────────
 
 @app.get("/api/movie", tags=["Content"])
 async def movie_sources(
     q: str = Query(..., description="Movie title"),
-    quality: str = Query("best", description="Quality: best | 1080p | 720p | 480p | 360p | worst"),
-    year: Optional[int] = Query(None, description="Release year to narrow search"),
+    quality: str = Query("best", description="best | 1080p | 720p | 480p | 360p | worst"),
+    year: Optional[int] = Query(None),
     language: str = Query("English", description="Subtitle language"),
-    no_caption: bool = Query(False, description="Skip subtitle fetch"),
+    no_caption: bool = Query(False),
 ):
-    """
-    Search for a movie and return its stream URL(s) and subtitle URL.
-    Use the returned `stream_url` to play or proxy the video.
-    """
+    """Get stream URL and subtitle URL for a movie."""
     try:
-        client = get_client()
-
-        # Search
-        results = await client.search(q)
-        items = results if isinstance(results, list) else getattr(results, "results", [])
-        movies = [i for i in items if getattr(i, "type", "").lower() in ("movie", "")]
-        if year:
-            movies = [i for i in movies if getattr(i, "year", None) == year] or movies
-
-        if not movies:
-            raise HTTPException(status_code=404, detail=f"No movies found for '{q}'")
-
-        item = movies[0]
-        item_id = getattr(item, "id", None) or getattr(item, "item_id", None)
-
-        # Get sources
-        sources = await client.movie_sources(item_id, quality=quality)
-
-        result = {
-            "title": getattr(item, "title", q),
-            "year": getattr(item, "year", None),
-            "id": item_id,
+        d = _downloader(quality=quality, language=language)
+        movie_file, subtitle_files = await d.download_movie(
+            q, year=year, no_download=True
+        )
+        return {
+            "title": getattr(movie_file, "title", q),
+            "year": getattr(movie_file, "year", year),
             "quality": quality,
-            "sources": _serialize(sources),
+            "stream_url": getattr(movie_file, "url", None) or getattr(movie_file, "stream_url", None),
+            "size": getattr(movie_file, "size", None),
+            "subtitles": None if no_caption else [_s(s) for s in (subtitle_files or [])],
         }
-
-        if not no_caption:
-            try:
-                subs = await client.movie_subtitles(item_id, language=language)
-                result["subtitles"] = _serialize(subs)
-            except Exception:
-                result["subtitles"] = None
-
-        return result
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ──────────────────────────────────────────────
-# TV SERIES — SOURCES & STREAM URL
+# MOVIE — auto (highest quality, first result)
+# ──────────────────────────────────────────────
+
+@app.get("/api/movie/auto", tags=["Content"])
+async def movie_auto(
+    q: str = Query(..., description="Movie title"),
+    quality: str = Query("best"),
+    language: str = Query("English"),
+):
+    """Auto-select best match and return stream + subtitle URLs."""
+    try:
+        auto = MovieAuto(
+            caption_language=language,
+            quality=quality,
+            download_dir="/tmp",
+        )
+        movie_file, subtitle_file = await auto.run(q, no_download=True)
+        return {
+            "title": getattr(movie_file, "title", q),
+            "stream_url": getattr(movie_file, "url", None) or getattr(movie_file, "stream_url", None),
+            "subtitle_url": getattr(subtitle_file, "url", None) if subtitle_file else None,
+            "quality": quality,
+            "language": language,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ──────────────────────────────────────────────
+# TV SERIES — stream sources
 # ──────────────────────────────────────────────
 
 @app.get("/api/series", tags=["Content"])
 async def series_sources(
     q: str = Query(..., description="Series title"),
-    season: int = Query(..., ge=1, description="Season number"),
-    episode: int = Query(..., ge=1, description="Episode number"),
-    quality: str = Query("best", description="Quality: best | 1080p | 720p | 480p | 360p | worst"),
-    language: str = Query("English", description="Subtitle language"),
-    no_caption: bool = Query(False, description="Skip subtitle fetch"),
+    season: int = Query(..., ge=1),
+    episode: int = Query(..., ge=1),
+    quality: str = Query("best"),
+    language: str = Query("English"),
+    no_caption: bool = Query(False),
 ):
-    """
-    Search for a TV series episode and return its stream URL(s) and subtitle URL.
-    """
+    """Get stream URL and subtitle URL for a TV series episode."""
     try:
-        client = get_client()
+        d = _downloader(quality=quality, language=language)
+        episodes_map = await d.download_tv_series(
+            q, season=season, episode=episode, limit=1, no_download=True
+        )
+        ep_key = f"S{season:02d}E{episode:02d}"
+        ep_data = episodes_map.get(ep_key) or (list(episodes_map.values())[0] if episodes_map else None)
 
-        results = await client.search(q)
-        items = results if isinstance(results, list) else getattr(results, "results", [])
-        series = [i for i in items if getattr(i, "type", "").lower() in ("series", "tv", "tvshow")]
+        if not ep_data:
+            raise HTTPException(status_code=404, detail=f"Episode {ep_key} not found for '{q}'")
 
-        if not series:
-            raise HTTPException(status_code=404, detail=f"No TV series found for '{q}'")
-
-        item = series[0]
-        item_id = getattr(item, "id", None) or getattr(item, "item_id", None)
-
-        sources = await client.episode_sources(item_id, season=season, episode=episode, quality=quality)
-
-        result = {
-            "title": getattr(item, "title", q),
-            "id": item_id,
+        video, subs = ep_data if isinstance(ep_data, (tuple, list)) else (ep_data, [])
+        return {
+            "title": getattr(video, "title", q),
             "season": season,
             "episode": episode,
             "quality": quality,
-            "sources": _serialize(sources),
+            "stream_url": getattr(video, "url", None) or getattr(video, "stream_url", None),
+            "size": getattr(video, "size", None),
+            "subtitles": None if no_caption else [_s(s) for s in (subs or [])],
         }
-
-        if not no_caption:
-            try:
-                subs = await client.episode_subtitles(
-                    item_id, season=season, episode=episode, language=language
-                )
-                result["subtitles"] = _serialize(subs)
-            except Exception:
-                result["subtitles"] = None
-
-        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -271,43 +271,36 @@ async def series_sources(
 
 
 # ──────────────────────────────────────────────
-# SERIES — EPISODE LIST
+# SERIES — seasons
 # ──────────────────────────────────────────────
 
-@app.get("/api/series/episodes", tags=["Content"])
-async def series_episodes(
-    id: str = Query(..., description="Series ID"),
-    season: int = Query(..., ge=1, description="Season number"),
+@app.get("/api/series/seasons", tags=["Content"])
+async def series_seasons(
+    id: str = Query(..., description="Series ID (from /api/search)"),
 ):
-    """List all episodes for a given season."""
+    """List all seasons for a TV series."""
     try:
-        client = get_client()
-        data = await client.episodes(id, season=season)
-        return {
-            "id": id,
-            "season": season,
-            "episodes": _serialize(data),
-        }
+        d = _downloader()
+        data = await d.seasons(id)
+        return {"id": id, "seasons": _s(data)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ──────────────────────────────────────────────
-# SERIES — SEASON LIST
+# SERIES — episodes
 # ──────────────────────────────────────────────
 
-@app.get("/api/series/seasons", tags=["Content"])
-async def series_seasons(
+@app.get("/api/series/episodes", tags=["Content"])
+async def series_episodes(
     id: str = Query(..., description="Series ID"),
+    season: int = Query(..., ge=1),
 ):
-    """List all available seasons for a TV series."""
+    """List all episodes in a season."""
     try:
-        client = get_client()
-        data = await client.seasons(id)
-        return {
-            "id": id,
-            "seasons": _serialize(data),
-        }
+        d = _downloader()
+        data = await d.episodes(id, season=season)
+        return {"id": id, "season": season, "episodes": _s(data)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -320,27 +313,8 @@ async def series_seasons(
 async def mirrors():
     """Discover available MovieBox mirror hosts."""
     try:
-        client = get_client()
-        data = await client.mirror_hosts()
-        return {"mirrors": _serialize(data)}
+        d = _downloader()
+        data = await d.mirror_hosts()
+        return {"mirrors": _s(data)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# ──────────────────────────────────────────────
-# HELPER
-# ──────────────────────────────────────────────
-
-def _serialize(obj):
-    """Recursively convert Pydantic models / dataclasses to dicts."""
-    if obj is None:
-        return None
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump()
-    if hasattr(obj, "__dict__"):
-        return {k: _serialize(v) for k, v in obj.__dict__.items() if not k.startswith("_")}
-    if isinstance(obj, list):
-        return [_serialize(i) for i in obj]
-    if isinstance(obj, dict):
-        return {k: _serialize(v) for k, v in obj.items()}
-    return obj
