@@ -1,39 +1,3 @@
-from fastapi import FastAPI, HTTPException, Query, Depends
-from fastapi.responses import HTMLResponse
-import requests
-
-app = FastAPI(title="SILENT TECH", docs_url=None, redoc_url=None)
-
-BASE_URL = "https://mv.paxsenix.org"
-HEADERS = {
-    'accept': '*/*',
-    'accept-language': 'en-US,en;q=0.9',
-    'priority': 'u=1, i',
-    'referer': 'https://mv.paxsenix.org/',
-    'sec-ch-ua': '"Chromium";v="127", "Not)A;Brand";v="99", "Microsoft Edge Simulate";v="127", "Lemur";v="127"',
-    'sec-ch-ua-mobile': '?1',
-    'sec-ch-ua-platform': '"Android"',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'same-origin',
-    'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36'
-}
-
-def check_key(key: str = Query(None)):
-    if key != "silent":
-        raise HTTPException(status_code=401, detail="ACCESS DENIED BY SILENT TECH 🖕")
-    return key
-
-# ENDPOINTS
-@app.get("/api/search")
-def search(q: str = Query(...), key: str = Depends(check_key)):
-    try:
-        r = requests.get(f"{BASE_URL}/api/search?q={q}", headers=HEADERS, timeout=15)
-        return r.json() if r.ok else {"success": False, "results": []}
-    except:
-        return {"success": False, "results": []}
-
-@app.get("/api/media")
 def media(movie_id: str = Query(..., alias="id"), key: str = Depends(check_key)):
     try:
         r = requests.get(f"{BASE_URL}/api/sources/{movie_id}", headers=HEADERS, timeout=15)
